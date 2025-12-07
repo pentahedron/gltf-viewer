@@ -32,98 +32,115 @@
 </head>
 <body>
 
-  <button id="uploadBtn">Upload GLB</button>
-  <input type="file" id="fileInput" accept=".glb" style="display:none" />
+<button id="uploadBtn">Upload GLB</button>
+<input type="file" id="fileInput" accept=".glb" style="display:none" />
 
-  <!-- Babylon.js CDN -->
-  <script src="https://cdn.babylonjs.com/babylon.js"></script>
-  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 
-  <canvas id="renderCanvas"></canvas>
+<canvas id="renderCanvas"></canvas>
 
-  <script>
-    const canvas = document.getElementById("renderCanvas");
-    const engine = new BABYLON.Engine(canvas, true);
-    let currentModel = null;
+<script>
+const canvas = document.getElementById("renderCanvas");
+const engine = new BABYLON.Engine(canvas, true);
 
-    const createScene = () => {
-      const scene = new BABYLON.Scene(engine);
-      scene.clearColor = new BABYLON.Color3(0.93, 0.93, 0.93);
+let currentContainer = null;
 
-      // Camera (ArcRotateCamera = OrbitControls)
-      const camera = new BABYLON.ArcRotateCamera(
+
+// ------------------------
+// Create Scene
+// ------------------------
+function createScene() {
+    const scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color3(0.93, 0.93, 0.93);
+
+    const camera = new BABYLON.ArcRotateCamera(
         "camera",
         Math.PI / 2,
         Math.PI / 3,
         5,
         new BABYLON.Vector3(0, 1, 0),
         scene
-      );
-      camera.attachControl(canvas, true);
-      camera.wheelPrecision = 50;
-      camera.panningSensibility = 50;
+    );
+    camera.attachControl(canvas, true);
+    camera.wheelPrecision = 50;
 
-      // Lights
-      new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(-5, -10, -7.5), scene).intensity = 0.8;
-      new BABYLON.HemisphericLight("hemiLight", new BABYLON.Vector3(0, 1, 0), scene).intensity = 1.2;
+    new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0,1,0), scene).intensity = 1.2;
+    new BABYLON.DirectionalLight("dir", new BABYLON.Vector3(-1,-2,-1), scene).intensity = 0.8;
 
-      scene.createDefaultEnvironment({
-        createSkybox: false,
-        enableGroundShadow: false
-      });
+    scene.createDefaultEnvironment({ createSkybox:false });
 
-      return scene;
-    };
+    return scene;
+}
 
-    const scene = createScene();
+const scene = createScene();
 
-    // -----------------------------
-    // Load GLB file from user
-    // -----------------------------
-    function loadUserGLB(file) {
-      const fileReader = new FileReader();
+// --------------------------------------------------------
+// Load GLB from <input> with full cleanup
+// --------------------------------------------------------
+function loadUserGLB(file) {
+    const reader = new FileReader();
 
-      fileReader.onload = function (e) {
-        const arrayBuffer = e.target.result;
+    reader.onload = (ev) => {
+        const buffer = ev.target.result;
 
-        // Remove previous model
-        if (currentModel) currentModel.dispose(true);
+        // Convert ArrayBuffer → Blob → File
+        const blob = new Blob([buffer], { type: "model/gltf-binary" });
+        const glbFile = new File([blob], file.name);
 
-        // Convert buffer → Blob → File (so Babylon can detect GLB)
-        const blob = new Blob([arrayBuffer], { type: "model/gltf-binary" });
-        const newFile = new File([blob], file.name);
+        // Unload previous model
+        if (currentContainer) {
+            currentContainer.removeAllFromScene();
+            currentContainer.dispose();
+            currentContainer = null;
+            console.log("Old model unloaded.");
+        }
 
-        BABYLON.SceneLoader.Append(
-          "file:",
-          newFile,
-          scene,
-          function () {
-            currentModel = scene.meshes[scene.meshes.length - 1];
-            currentModel.position = new BABYLON.Vector3(0, 0, 0);
-            currentModel.scaling = new BABYLON.Vector3(1, 1, 1);
-            console.log("Model Loaded!");
-          },
-          null,
-          function (error) {
-            console.error("Failed to load model:", error);
-          }
+        // Load new model
+        BABYLON.SceneLoader.LoadAssetContainer(
+            "file:",        // Required for File objects
+            glbFile,        // The file object itself
+            scene,
+            (container) => {
+                currentContainer = container;
+
+                container.addAllToScene();
+
+                if (container.meshes.length) {
+                    const root = container.meshes[0];
+                    root.position.set(0, 0, 0);
+                    root.scaling.set(1, 1, 1);
+                }
+
+                console.log("Model Loaded Successfully!");
+            },
+            null,
+            (scene, message, error) => {
+                console.error("GLB Load Error:", error);
+            }
         );
-      };
-
-      fileReader.readAsArrayBuffer(file);
-    }
-
-    // UI events
-    document.getElementById("uploadBtn").onclick = () =>
-      document.getElementById("fileInput").click();
-
-    document.getElementById("fileInput").onchange = (e) => {
-      const file = e.target.files[0];
-      if (file) loadUserGLB(file);
     };
 
-    engine.runRenderLoop(() => scene.render());
-    window.addEventListener("resize", () => engine.resize());
-  </script>
+    reader.readAsArrayBuffer(file);
+}
+
+
+// ------------------------
+// UI buttons
+// ------------------------
+document.getElementById("uploadBtn").onclick = () =>
+    document.getElementById("fileInput").click();
+
+document.getElementById("fileInput").onchange = (e) => {
+    if (e.target.files[0]) loadUserGLB(e.target.files[0]);
+};
+
+
+// ------------------------
+// Render loop
+// ------------------------
+engine.runRenderLoop(() => scene.render());
+window.addEventListener("resize", () => engine.resize());
+</script>
 </body>
 </html>
